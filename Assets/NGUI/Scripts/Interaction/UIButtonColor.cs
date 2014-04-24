@@ -1,6 +1,6 @@
 //----------------------------------------------
 //            NGUI: Next-Gen UI kit
-// Copyright © 2011-2013 Tasharen Entertainment
+// Copyright © 2011-2014 Tasharen Entertainment
 //----------------------------------------------
 
 using UnityEngine;
@@ -9,6 +9,7 @@ using UnityEngine;
 /// Simple example script of how a button can be colored when the mouse hovers over it or it gets pressed.
 /// </summary>
 
+[ExecuteInEditMode]
 [AddComponentMenu("NGUI/Interaction/Button Color")]
 public class UIButtonColor : UIWidgetContainer
 {
@@ -22,13 +23,13 @@ public class UIButtonColor : UIWidgetContainer
 	/// Color to apply on hover event (mouse only).
 	/// </summary>
 
-	public Color hover = new Color(0.6f, 1f, 0.2f, 1f);
+	public Color hover = new Color(225f / 255f, 200f / 255f, 150f / 255f, 1f);
 
 	/// <summary>
 	/// Color to apply on the pressed event.
 	/// </summary>
 
-	public Color pressed = Color.grey;
+	public Color pressed = new Color(183f / 255f, 163f / 255f, 123f / 255f, 1f);
 
 	/// <summary>
 	/// Duration of the tween process.
@@ -38,7 +39,7 @@ public class UIButtonColor : UIWidgetContainer
 
 	protected Color mColor;
 	protected bool mStarted = false;
-	protected bool mHighlighted = false;
+	protected UIWidget mWidget;
 
 	/// <summary>
 	/// UIButtonColor's default (starting) color. It's useful to be able to change it, just in case.
@@ -51,7 +52,7 @@ public class UIButtonColor : UIWidgetContainer
 #if UNITY_EDITOR
 			if (!Application.isPlaying) return Color.white;
 #endif
-			Start();
+			Awake();
 			return mColor;
 		}
 		set
@@ -59,35 +60,46 @@ public class UIButtonColor : UIWidgetContainer
 #if UNITY_EDITOR
 			if (!Application.isPlaying) return;
 #endif
-			Start();
+			Awake();
 			mColor = value;
 		}
 	}
 
-	void Start ()
+	void Awake ()
 	{
 		if (!mStarted)
 		{
-			Init();
 			mStarted = true;
+			Init();
 		}
 	}
 
 	protected virtual void OnEnable ()
 	{
-		if (mStarted && mHighlighted)
-			OnHover(UICamera.IsHighlighted(gameObject));
+#if UNITY_EDITOR
+		if (!Application.isPlaying) return;
+#endif
+		if (mStarted) OnHover(UICamera.IsHighlighted(gameObject));
+		
+		if (UICamera.currentTouch != null)
+		{
+			if (UICamera.currentTouch.pressed == gameObject) OnPress(true);
+			else if (UICamera.currentTouch.current == gameObject) OnHover(true);
+		}
 	}
 
 	protected virtual void OnDisable ()
 	{
+#if UNITY_EDITOR
+		if (!Application.isPlaying) return;
+#endif
 		if (mStarted && tweenTarget != null)
 		{
 			TweenColor tc = tweenTarget.GetComponent<TweenColor>();
 
 			if (tc != null)
 			{
-				tc.color = mColor;
+				tc.value = mColor;
 				tc.enabled = false;
 			}
 		}
@@ -96,11 +108,11 @@ public class UIButtonColor : UIWidgetContainer
 	protected void Init ()
 	{
 		if (tweenTarget == null) tweenTarget = gameObject;
-		UIWidget widget = tweenTarget.GetComponent<UIWidget>();
+		mWidget = tweenTarget.GetComponent<UIWidget>();
 
-		if (widget != null)
+		if (mWidget != null)
 		{
-			mColor = widget.color;
+			mColor = mWidget.color;
 		}
 		else
 		{
@@ -108,7 +120,7 @@ public class UIButtonColor : UIWidgetContainer
 
 			if (ren != null)
 			{
-				mColor = ren.material.color;
+				mColor = Application.isPlaying ? ren.material.color : ren.sharedMaterial.color;
 			}
 			else
 			{
@@ -120,30 +132,66 @@ public class UIButtonColor : UIWidgetContainer
 				}
 				else
 				{
-					Debug.LogWarning(NGUITools.GetHierarchy(gameObject) + " has nothing for UIButtonColor to color", this);
-					enabled = false;
+					tweenTarget = null;
+					mStarted = false;
 				}
 			}
 		}
-		OnEnable();
 	}
 
-	public virtual void OnPress (bool isPressed)
+	protected virtual void OnPress (bool isPressed)
 	{
-		if (enabled)
+		if (enabled && UICamera.currentTouch != null)
 		{
-			if (!mStarted) Start();
-			TweenColor.Begin(tweenTarget, duration, isPressed ? pressed : (UICamera.IsHighlighted(gameObject) ? hover : mColor));
+			if (!mStarted) Awake();
+
+			if (tweenTarget != null)
+			{
+				if (isPressed)
+				{
+					TweenColor.Begin(tweenTarget, duration, pressed);
+				}
+				else if (UICamera.currentTouch.current == gameObject && UICamera.currentScheme == UICamera.ControlScheme.Controller)
+				{
+					TweenColor.Begin(tweenTarget, duration, hover);
+				}
+				else TweenColor.Begin(tweenTarget, duration, mColor);
+			}
 		}
 	}
 
-	public virtual void OnHover (bool isOver)
+	protected virtual void OnHover (bool isOver)
 	{
 		if (enabled)
 		{
-			if (!mStarted) Start();
-			TweenColor.Begin(tweenTarget, duration, isOver ? hover : mColor);
-			mHighlighted = isOver;
+			if (!mStarted) Awake();
+			if (tweenTarget != null) TweenColor.Begin(tweenTarget, duration, isOver ? hover : mColor);
+		}
+	}
+
+	protected virtual void OnDragOver ()
+	{
+		if (enabled)
+		{
+			if (!mStarted) Awake();
+			if (tweenTarget != null) TweenColor.Begin(tweenTarget, duration, pressed);
+		}
+	}
+
+	protected virtual void OnDragOut ()
+	{
+		if (enabled)
+		{
+			if (!mStarted) Awake();
+			if (tweenTarget != null) TweenColor.Begin(tweenTarget, duration, mColor);
+		}
+	}
+
+	protected virtual void OnSelect (bool isSelected)
+	{
+		if (enabled && (!isSelected || UICamera.currentScheme == UICamera.ControlScheme.Controller))
+		{
+			if (tweenTarget != null) OnHover(isSelected);
 		}
 	}
 }
